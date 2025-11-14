@@ -1,15 +1,36 @@
 ---
-title: "Grant Data Cleaning"
+title: "Data Cleaning: Science Funding Dynamics"
 author: "Kristin Keith"
 date: "2025-11-12"
 output: html_document
 ---
+
+This .Rmd assumes the working directory is the project root and that raw CSVs are stored in data/raw/.
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r load packages}
-library(tidyverse)
+library(tidyverse)   
+library(lubridate)   # date handling
+library(janitor)     # clean_names()
+library(here)        # safe relative paths
+
+# set seed for sampling
+set.seed(123)
 
 ```
+
+```{r merge data}
+
+
+
+
+
+
+
+
+
+
+
