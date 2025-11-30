@@ -1,0 +1,231 @@
+---
+title: "Data Analysis: Science Funding Dynamics"
+author: "Kristin Keith"
+date: "2025-11-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages}
+library(tidyverse)
+library(here)
+library(car)
+library(janitor)
+library(knitr)
+library(rcompanion) # find non-parametric effect size 
+library(lsr) # cramer's V
+library(DescTools) # linear trend analysis
+```
+RESEARCH QUESTION: How have federal science grant allocations (volume, funding levels, and cancellations) changed over fiscal years 2018-2025, particularly during and after the COVID-19 pandemic and the 2024 administration transition period (2023-2025)?
+
+HYPOTHESES:
+1) Has grant funding (total_obligated_amount) changed significantly across fiscal years 2018-2025?
+2) Did funding volume (number of grants) change significantly across fiscal years 2018-2025?
+3) Did cancellation rates vary significantly across fiscal years 2018-2025?
+
+```{r setup}
+# read clean csv (may take a moment, this is a large file)
+ grants <- read_csv(here("data", "processed", "grants_analysis.csv"))
+
+```
+
+HYPOTHESIS 1: Has grant funding (total_obligated_amount) changed significantly across fiscal years 2018-2025?
+
+To test this, we will look at whether the median grant funding amount has changed significantly between FY 2018-2025. 
+
+H0: The distribution of (log-transformed) grant funding is the same across all years.  
+H1: At least one year has a significantly different funding distribution.
+
+```{r funding boxplot}
+
+p_funding_box <- grants %>%
+  filter(total_obligated_amount > 0) %>%
+  ggplot(aes(x = factor(fiscal_year), y = log_funding)) +
+  geom_boxplot(fill = "lightpink") +
+  labs(title = "Distribution of Grant Funding by Fiscal Year (Log Scale)",
+       x = "Fiscal Year",
+       y = "Total Obligated Amount (log10)") +
+  theme_minimal() + 
+  theme(plot.title = element_text(face = "bold", hjust = 0.5),
+        axis.title = element_text(face = "bold"),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor = element_blank())
+
+p_funding_box
+
+ggsave(here("figures", "fig01_funding_boxplot.png"), p_funding_box, width = 7, height = 4, dpi = 300)
+
+```
+The figure shows the distribution of total obligated funding (log10 scale) across fiscal years 2018–2025. Median funding levels show a gradual increase over this period, with slight flattening in 2020–2021 during the COVID-19 years, followed by a stronger increase in FY 2023–2025. This suggests a possible recovery/reprioritization in post-pandemic and early administration-change periods. While my data download covered FY 2018–2025, some records had latest action dates falling in early FY 2026 (Oct–Dec 2025). These were retained (although this data is PARTIAL) in this graph to preserve continuity of time trends.
+
+```{r median line graph}
+
+p_funding_scatter <- grants %>%
+  filter(fiscal_year >= 2018, fiscal_year <= 2025) %>%
+  group_by(fiscal_year) %>%
+  summarise(median_funding = median(total_obligated_amount)) %>%
+  ggplot(aes(x = fiscal_year, y = median_funding)) +
+  geom_line() +
+  geom_point(size = 3, color = "pink") +
+  scale_y_log10(labels = scales::dollar) +
+  labs(title = "Median Funding Over Time (FY 2018-2025)",
+       y = "Median Total Obligated Amount (USD)",
+       x = "Fiscal Year") +
+  theme_minimal() + 
+    theme(plot.title = element_text(face = "bold", hjust = 0.5),
+        axis.title = element_text(face = "bold"))
+
+p_funding_scatter
+
+ggsave(here("figures", "fig02_funding_scatterplot.png"), p_funding_scatter, width = 7, height = 4, dpi = 300)
+
+```
+The line plot displays the median total obligated funding for federal science grants from fiscal years 2018 to 2025. A clear upward trend is visible over time, indicating that the typical (median) grant amount has steadily increased throughout the fiscal year time range. A noticeable increase occurs from 2022 onward, with median funding exceeding \$450K in 2023, and then rising sharply in 2024 and 2025. By 2025, the median funding surpasses $1 million, nearly quadrupling compared to 2018 levels. Overall, the graph supports Hypothesis 1, showing a substantial and consistent increase in grant funding over time, with especially strong growth in later years.
+
+
+To answer my first hypothesis, I needed to compare median grant funding levels across multiple independent groups (fiscal years). Normally, an ANOVA would be used for this purpose, but ANOVA would require a normal distribution of funding amounts within each group and homoscedasticity among groups. However, I know my data is heavily right skewed (even after log transformation) due to large outliers and that variance is not equal across fiscal years. Since these assumptions are violated, I chose the Kruskal–Wallis rank-sum test, a nonparametric alternative to ANOVA. It does not require normality or equal variances, and instead compares the distributions (specifically medians) of funding across years using ranked data.
+
+```{r kruskal-wallis}
+kruskal.test(log_funding ~ fiscal_year, data = grants)
+```
+The Kruskal–Wallis test showed a statistically significant difference in the distribution of grant funding across fiscal years (chi-squared = 203,222, df = 8, p < 0.001). This indicates that at least one year differs from the others in funding levels.
+
+
+To test which specific years differ from one another, I chose to conduct a pairwise Wilcoxon rank-sum test to compare each pair of years individually. However, making many pairwise comparisons increases the chance of Type I error (false positives). To control for this, I apply the Bonferroni correction, which adjusts the p-values to make the test more conservative.
+
+```{r post-hoc}
+pairwise.wilcox.test(grants$log_funding,
+                     grants$fiscal_year,
+                     p.adjust.method = "bonferroni")
+```
+The above test revealed that funding levels differed significantly between every pair of fiscal years (all adjusted p < 0.001), indicating consistent year-over-year changes in median award amounts.
+
+
+Finally, because our sample size is very large, we need an effect size measure to evaluate how much of the variation in funding is actually explained by the fiscal year. Epsilon squared is the appropriate effect size measure for Kruskal–Wallis tests. It tells us how much of the variability in funding (log_funding) can be attributed to differences between fiscal years.
+
+```{r epsilon-squared}
+epsilonSquared(x = grants$log_funding, g = grants$fiscal_year)
+```
+
+The above Epsilon squared value shows that fiscal year explains about 11% of the variability in median funding levels. This suggests that while there are statistically significant differences across years, the magnitude of these differences is moderate.
+
+
+In conclusion, median funding levels show a clear upward trend from FY 2018–2025, indicating increased federal investment in scientific grants over time. Because the Kruskal–Wallis test returned a p-value < 0.001, we reject the null hypothesis and conclude that median grant funding levels differ significantly across fiscal years. However, it should be noted that the epsilon-squared effect size (0.11) indicates a moderate effect, meaning that while the differences are statistically significant, fiscal year explains only about 11% of the variance in funding levels.
+
+
+HYPOTHESIS 2: Did funding volume (number of grants) change significantly across fiscal years 2018-2025?
+H0: Funding volume (number of grants awarded) is the same across fiscal years (no association between fiscal year and grant count).
+H1: Funding volume differs significantly across fiscal years (i.e., there is an association between fiscal year and grant count).
+
+To test Hypothesis 2, I ran a Chi-square goodness-of-fit test on the frequency of grants per fiscal year to test whether funding volume was evenly distributed across years. A significant result would indicate that the number of grants awarded changed significantly over time.
+
+```{r grant frequency}
+# create a frequency table of the number of grants per fiscal year 
+grant_counts <- grants %>%
+  count(fiscal_year)
+grant_counts
+
+# run chi square test on specified years 
+grants_filtered <- grants %>%
+  filter(fiscal_year >= 2018, fiscal_year <= 2025)
+
+chisq.test(table(grants_filtered$fiscal_year))
+```
+There was a significant association between fiscal year and funding volume (chi-squared = 1,210,700, p < 0.0001), indicating that grant volume varied significantly by year. From 2018 to 2025, the number of awarded grants increased sharply, particularly during FY 2023–2025, suggesting a potential increase in federal science investment during the COVID-19 recovery period and after the 2024 administration change. FY 2026 data was excluded from analysis due to incomplete year reporting, which could bias frequency and funding comparisons.
+
+```{r counts bar graph}
+
+p_funding_bar <- grants %>%
+  filter(fiscal_year >= 2018, fiscal_year <= 2025) %>% 
+  count(fiscal_year) %>%
+  ggplot(aes(x = factor(fiscal_year), y = n)) +
+  geom_col(fill = "lightpink") +
+  labs(title = "Number of Federal Science Grants by Fiscal Year (2018-2025)",
+       x = "Fiscal Year", y = "Number of Grants") +
+  theme_minimal() + 
+  theme(plot.title = element_text(face = "bold", hjust = 0.5),
+        axis.title = element_text(face = "bold"))
+
+p_funding_bar
+
+ggsave(here("figures", "fig03_funding_barchart.png"), p_funding_bar, width = 7, height = 4, dpi = 300)
+```
+The bar chart shows a clear increase in the number of federal science grants awarded from FY 2018 to 2025. In 2018, there were around 58,000 grants, while by 2025 this number had grown to over 650,000 grants (more than a ten-fold increase). The growth is not linear; instead, it accelerates sharply between 2022 and 2025, indicating a surge in grant activity in the most recent years.
+
+In conclusion, because the p-value is far below 0.05, we reject the null hypothesis, which stated that the number of grants remained constant across fiscal years. This means there is strong statistical evidence that funding volume (number of grants awarded) changed significantly over time.
+
+
+HYPOTHESIS 3: Did cancellation rates vary significantly across fiscal years 2018-2025?
+H0: There is no difference in cancellation rates across fiscal years. The proportion of cancelled grants is the same for all years from 2018 to 2025.
+H1: There is a difference in cancellation rates across fiscal years. The proportion of cancelled grants varies for at least one year compared to others.
+
+To begin testing this hypothesis, I created a summary table showing the total number of grants, the cancelled number of grants, and the proportion of cancelled grants in each fiscal year (subsequently converted to a percentage). 
+```{r cancellation summary}
+# per-year grant cancellation summary 
+yearly_cancel_summary <- grants %>%
+  filter(fiscal_year >= 2018, fiscal_year <= 2025) %>%
+  group_by(fiscal_year) %>%
+  summarise(total_grants = n(),
+            cancelled_grants = sum(cancelled),
+            cancellation_rate = round((mean(cancelled) * 100), 3))
+
+yearly_cancel_summary
+```            
+The table above shows that cancellation rates were highest in 2018 (2.55%), before steadily declining over time. From 2018–2021, cancellation rates remained around 1.4%–1.6%, implying relatively stable activity during the early COVID and recovery years. However, a sharp decline begins in 2022, falling below 1% and dropping to nearly 0.1% by 2025, despite grant volume increasing considerably. Interestingly, although total grant volume increased by over tenfold from 2018 to 2025, the number of cancellations did not increase proportionally, resulting in decreasing cancellation rates.
+
+Since both my variables (fiscal year, cancellation status) are categorical, a Chi-squared test of independence is appropriate. It tests whether the proportion of cancelled grants differs significantly by year.
+
+```{r chi square}
+chisq.test(table(grants$fiscal_year, grants$cancelled))
+```
+The chi square test confirms there is a statistically significant association between fiscal year and cancellation status (chi squared = 14069, p < 0.001). This implies cancellation rates are not constant across years.
+
+To test how strong the association is between fiscal year and cancellation status, I find Cramer's V below. 
+```{r effect size}
+cramersV(table(grants$fiscal_year, grants$cancelled))
+```   
+This indicates a very weak association (Cramer's V = 0.087), meaning that while cancellation rates change significantly across years, fiscal year only explains a small portion of the variation in cancellations. This is common in large administrative datasets; with millions of observations, even small shifts become statistically significant.
+
+
+Next, I ran a post-hoc pairwise proportion test to identify which pairs of years have significantly different cancellation rates. 
+```{r pairwise test}
+pairwise.prop.test(x = table(grants$fiscal_year, grants$cancelled)[, "TRUE"],
+                   n = rowSums(table(grants$fiscal_year, grants$cancelled)),
+                   p.adjust.method = "holm")
+```
+As shown in the pairwise test above, nearly all year-to-year comparisons have p-values < 0.001, especially 2018 vs 2023–2025, showing especially strong declines in cancellation rates in recent years. Years close together (2019 vs. 2020, 2021 vs. 2022) are sometimes not significantly different, indicating smoother transitions in those periods. The largest drops in cancellation rate occur from 2022 to 2023, and again from 2023 to 2024/2025.
+
+
+Finally, to gauge whether there is a consistent increasing/decreasing cancellation rate trend over time, I ran a Cochran-Armitage Trend Test to find a possible linear trend in cancellation rates across fiscal years. 
+
+```{r trend test}
+CochranArmitageTest(table(grants$fiscal_year, grants$cancelled))
+```
+The above test confirms a strong, statistically significant downward trend across time. This means cancellation rates consistently decline year after year rather than fluctuating randomly. 
+
+Below, I visualized cancellation rates per fiscal year in a line graph. 
+```{r visualization}
+p_cancellation_rate <- ggplot(yearly_cancel_summary, aes(x = fiscal_year, y = cancellation_rate)) +
+  geom_line(group = 1, linewidth = 1, color = "hotpink") +
+  geom_point(size = 2, color = "hotpink") +
+  labs(title = "Cancellation Rate of Grants Over Time (FY 2018-2025)",
+       x = "Fiscal Year",
+       y = "Cancellation Rate (%)") +
+  theme_minimal() + 
+  theme(plot.title = element_text(face = "bold", hjust = 0.5),
+        axis.title = element_text(face = "bold"))
+
+p_cancellation_rate
+
+ggsave(here("figures", "fig04_cancellation_line.png"), p_cancellation_rate, width = 7, height = 4, dpi = 300)
+
+``` 
+The line plot above shows a sharp decline in cancellation rates from 2.55% in 2018 to 0.10% in 2025.
+There is a small bump during early COVID years (2020–2021), but afterward, cancellations decline dramatically, especially from 2022 onward.           
+              
+In conclusion, I reject the null hypothesis and conclude that cancellation rates significantly decreased over time, especially after FY 2022, suggesting improvements in grant continuation, stability of funding commitments, or shifting administrative policies.           
+              
+              

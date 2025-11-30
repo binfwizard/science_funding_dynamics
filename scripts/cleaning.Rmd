@@ -1,0 +1,251 @@
+---
+title: "Data Cleaning: Science Funding Dynamics"
+author: "Kristin Keith"
+date: "2025-11-12"
+output: html_document
+---
+
+This .Rmd assumes the working directory is the project root and that raw CSVs are stored in data/raw/.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages}
+library(tidyverse)
+library(ggplot2)
+library(lubridate)   # date handling
+library(janitor)     # clean_names()
+library(here)        # safe relative paths
+
+# set seed for sampling
+set.seed(123)
+
+```
+
+Below we will merge all 8 .csv files into a single dataframe for easier visualization, cleaning, and analysis. The columns and values in each feature are also displayed to confirm the datasets merged successfully. 
+
+```{r merge data}
+# list all raw files 
+raw_files <- list.files(here("data", "raw"),
+                        pattern = "PrimeAwardSummaries_\\d{4}\\.csv",
+                        full.names = TRUE)
+raw_files
+
+# read all CSVs and combine into one dataframe 
+grants_raw <- raw_files %>% 
+  map_dfr(~ read_csv(.x, show_col_types = FALSE) %>% clean_names()) # clean_names() to ensure everything lowercase
+
+glimpse(grants_raw)
+  
+```
+Next, we ensure that the only agencies present in the data are specific, science-centered federal agencies. We also view the number of grants per agency in order to get a better picture of our merged, raw dataset. 
+
+```{r filter agencies}
+# filter to specific science funding agencies; I initially did this in retrieving the data, but want to ensure that only these organizations are in the full dataframe 
+science_agencies <- c("Department of Health and Human Services",
+  "National Science Foundation",
+  "Department of Energy",
+  "National Aeronautics and Space Administration",
+  "Department of Agriculture",
+  "Environmental Protection Agency",
+  "Department of Defense")
+
+grants_science <- grants_raw %>%
+  mutate(awarding_agency_name = str_squish(awarding_agency_name)) %>% # remove extra spaces 
+  filter(awarding_agency_name %in% science_agencies) # keep only specific science funding agencies 
+
+# view the number of grants per agency in merged dataset 
+grants_science %>%
+  count(awarding_agency_name)
+
+```
+
+Before visualizing the data, we need to identify extreme outliers in total_obligated_amount, which will cause the data to exhibit a strong right skew if kept. This block checks the 95th, 99th, 99.5th, and 99.9th percentiles of total_obligated_amount to obtain a better idea of where the data begins to skew. It also flags extremely low and extremely high grant obligations, then views which types of grants these values tend to fall under. 
+
+```{r extreme outliers check}
+# show top quantiles of funding amounts to inspeact skew/extreme values 
+quantile(grants_science$total_obligated_amount,
+         probs = c(0.95, 0.99, 0.995, 0.999), na.rm = TRUE)
+
+# flag potentially extreme high/low values for inspection (not filtering)
+grants_flagged <- grants_science %>%
+  mutate(extreme_high = total_obligated_amount > 1e9,
+         extreme_low  = total_obligated_amount < -1e8, 
+         extreme_block_formula =assistance_type_description %in% c("BLOCK GRANT (A)", "FORMULA GRANT (A)") & total_obligated_amount > 5e8) %>%
+  mutate(extreme_any = extreme_high | extreme_low | extreme_block_formula)
+
+# quick check of how many grants in all extreme categories 
+grants_flagged %>%
+  filter(extreme_any) %>%
+  count(awarding_agency_name, assistance_type_description, sort = TRUE)
+
+```
+After inspecting records with extreme obligated amounts (>$500M), I found that over 90% belonged to “Formula Grant (A)” and “Block Grant (A)” assistance types. These grants represent state-level entitlement and distribution programs (ex. health services, disaster relief), not individual research funding. Since the goal of this analysis is to study research-oriented grant dynamics, I will exclude A-type grants from all visualizations and summaries. Cooperative Agreements (B) and Project Grants (B), which include research grants, are retained for now, even if large.
+
+```{r filter A grants}
+# filter out A-type grants (Formula and Block Grants)
+grants_cleaned <- grants_science %>%
+  filter(!assistance_type_description %in% c("FORMULA GRANT (A)", "BLOCK GRANT (A)")) %>%
+  mutate(cancelled = total_obligated_amount < 0,
+         cancelled_label = if_else(cancelled,
+                                   "Cancelled / Net de-obligation",
+                                   "Active / Net positive"))
+```
+
+We still need to inspect the remaining outliers after filtering Formula and Block grants out of the data--does this data represent logical individual research grant funding amounts? 
+
+```{r explore remaining outliers}
+# check new max total_obligated_amount after filtering 
+max(grants_cleaned$total_obligated_amount)
+
+# look at all grants >= $1 billion
+grants_cleaned %>%
+  filter(total_obligated_amount >= 1e9) %>%
+  count(awarding_agency_name, assistance_type_description, sort = TRUE)
+
+# look at all grants >= $100 million 
+grants_cleaned %>%
+  filter(total_obligated_amount >= 1e8) %>%
+  select(award_id_fain, awarding_agency_name, assistance_type_description,
+         record_type_description, total_obligated_amount) %>%
+  arrange(desc(total_obligated_amount))
+```
+~$22 billion is still very large! Below we view the 90th, 99th, and maximum total_obligated_amount per the two remaining grant types. 
+
+```{r amount summary}
+# look at different quantiles of cooperative agreement and project grant award amounts 
+grants_cleaned %>%
+  group_by(assistance_type_description) %>%
+  summarize(
+    n = n(),
+    median_amount = median(total_obligated_amount, na.rm = TRUE),
+    q90 = quantile(total_obligated_amount, 0.90, na.rm = TRUE),
+    q99 = quantile(total_obligated_amount, 0.99, na.rm = TRUE),
+    max_amount = max(total_obligated_amount, na.rm = TRUE),
+    .groups = "drop")
+```
+Typical individual research grants from agencies such as NIH, NSF, and DOE are usually below \$5M over their duration (NIH R01: \$250K–\$500K/year; NSF standard awards: \$200K–\$2M). However, in our dataset, we found multiple awards with amounts exceeding \$20M–\$200M. Inspection showed these correspond to program-level, multi-site, or aggregated funding agreements, not individual investigator-led projects. Based on this pattern, I flagged grants above \$50M (or above $20M when combined with Cooperative Agreement funding type) as “Program/Aggregated Funding.” This classification (not an official ceiling, but data-informed flags) helps distinguish standard research projects from large-scale programmatic allocations.
+```{r program-level flag}
+# flag extreme values 
+grants_cleaned <- grants_cleaned %>%
+  mutate(program_level_flag = case_when(total_obligated_amount > 50000000 ~ TRUE,
+                                        assistance_type_description == "COOPERATIVE AGREEMENT (B)" & total_obligated_amount > 20000000 ~ TRUE,
+                                        is.na(assistance_type_description) & total_obligated_amount > 20000000 ~ TRUE,
+                                        TRUE ~ FALSE),
+         award_type_class = if_else(program_level_flag,
+                                    "Program / Aggregated Funding",
+                                    "Individual Research Grant"))
+
+```
+
+```{r quick visualizations}
+# bar chart of number of grants per agency, reordered from largest -> smallest 
+grants_cleaned %>%
+  count(awarding_agency_name) %>%
+  ggplot(aes(x = reorder(awarding_agency_name, n), y = n)) +
+  geom_col(fill = "lightpink") +
+  coord_flip() +
+  labs(title = "Number of Grants by Agency (FY 2018–2025)",
+    x = "Agency",
+    y = "Number of Grants")
+
+# histogram of total_obligated_amount across all grants regardless of agency (a glimpse at how financially big science grants are)
+grants_cleaned %>%
+  filter(total_obligated_amount > 0) %>% 
+  ggplot(aes(x = total_obligated_amount)) + 
+  geom_histogram(bins = 60, fill = "lightpink", color = "white") +
+  scale_x_log10(labels = scales::dollar) + # use log10 scale due to large-scale program/cooperative agreements inflating upper funding tail
+  theme_minimal() +
+  labs(title = "Total Obligated Amounts for All Science Grants (Log Scale)",
+    x = "Total Obligated Amount (log10)",
+    y = "Number of Grants")
+
+# boxplot of total_obligated_amount per award agency  
+grants_cleaned %>%
+  filter(total_obligated_amount > 0) %>%  # can't have negative values 
+  ggplot(aes(x = awarding_agency_name, y = total_obligated_amount)) +
+  geom_boxplot(outlier.alpha = 0.15, fill = "lightpink") +
+  scale_y_log10(labels = scales::dollar) +  # log scale to adjust for large-scale program/cooperative agreements inflating upper funding tail
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Distribution of Award Amounts by Agency (Log Scale)",
+    x = "Agency",
+    y = "Total Obligated Amount (log10)")
+```
+
+```{r scatterplot}
+# scatterplot to show relationship between grant duration and obligated amount 
+# calculate grant duration in days
+grants_cleaned <- grants_cleaned %>%
+  mutate(duration_days = as.numeric(period_of_performance_current_end_date - period_of_performance_start_date))
+
+grants_duration <- grants_cleaned %>%
+  filter(!is.na(duration_days),
+         !is.na(total_obligated_amount)) %>% # remove NA rows 
+  filter(duration_days > 0,
+         total_obligated_amount > 0) %>% # remove negative durations or award amounts (i.e. cancelled grants) 
+  filter(duration_days <= 3650)  #drop impossible durations 
+
+set.seed(123)  # reproducible sampling 
+
+# take subset of data
+grants_duration_sample <- grants_duration %>%
+  dplyr::sample_n(50000) 
+
+grants_duration_sample %>%
+  ggplot(aes(x = duration_days, y = total_obligated_amount)) +
+  geom_point(alpha = 0.1, color = "hotpink") +  # transparency to reduce overplotting
+  scale_y_log10(labels = scales::comma) +
+  theme_minimal() +
+  labs(title = "Relationship Between Grant Duration and Funding Amount",
+    x = "Duration of Grant (days)",
+    y = "Total Obligated Amount (log10)")
+```
+Below, we define cancellations as grants where the net total obligated amount is negative, indicating that previously obligated funds were withdrawn or de-obligated. We restrict this cancellation logic to grants that we previously classified as Individual Research Grants, to avoid misclassifying program-level funding reallocations, adjustments, or federal budget corrections.
+```{r cancelled variable}
+# derive boolean "cancelled" variable from total_obligated_amount 
+grants_final <- grants_cleaned %>%
+  mutate(cancelled = total_obligated_amount < 0 & 
+           award_type_class == "Individual Research Grant", 
+         cancelled_label = if_else(cancelled,"Cancelled / Net De-obligation", "Active / Net Positive"))
+
+# quick check to ensure variable derivation returned results
+grants_final %>% 
+  count(cancelled)
+
+```
+Finally, save the processed dataframe to a .csv in the correct folder.
+```{r save processed file}
+# create necessary derived variables for analysis step (further details on this in data_analysis.Rmd)
+grants_final <- grants_final %>%
+  mutate(fiscal_year = award_latest_action_date_fiscal_year,   # derive fiscal year from base award date
+         period = case_when(fiscal_year %in% 2018:2019 ~ "Pre-COVID",
+                            fiscal_year %in% 2020:2022 ~ "COVID Impact",
+                            fiscal_year %in% 2023:2025 ~ "Post-Administration Change",
+                            TRUE ~ "Outside Range"), # define arbitrary time ranges for potential analysis
+         duration_days = as.numeric(period_of_performance_current_end_date - period_of_performance_start_date), # project duration in days 
+         log_funding = suppressWarnings(ifelse(total_obligated_amount > 0,
+                                               log10(total_obligated_amount + 1),
+                                               NA)))# log transform to handle skew, keep NA for cancelled/negative grants  
+
+# only keep specific columns for analysis (otherwise full, merged file will be 5 GB)
+grants_analysis <- grants_final %>%
+  select(assistance_award_unique_key, award_id_fain, award_id_uri,total_obligated_amount, total_non_federal_funding_amount, total_outlayed_amount, award_base_action_date, award_latest_action_date, period_of_performance_start_date, period_of_performance_current_end_date, awarding_agency_name, awarding_sub_agency_name, assistance_type_description, record_type_description, award_type_class, recipient_state_code, recipient_state_name, recipient_city_name, recipient_county_name, fiscal_year, period, cancelled, cancelled_label, duration_days, log_funding)
+
+# save the final cleaned data with cancelled variable into data/processed folder
+write_csv(grants_analysis, here("data", "processed", "grants_analysis.csv"))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
