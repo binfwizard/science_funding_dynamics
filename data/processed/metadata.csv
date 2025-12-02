@@ -1,20 +1,31 @@
-GRANTS ANALYSIS METADATA,
-This dataset (grants_analysis.csv) contains federal science grant award records from FY 2018–2025 sourced from USAspending.gov.,
-" Each row represents one awarded grant, including financial details, agency information, performance period, recipient location, and cancellation status (derived). ",
-"This dataset was cleaned in cleaning.Rmd and analyzed in analysis.Rmd to explore trends in funding, grant volume, and cancellation rates.",
-Data source URL: https://www.usaspending.gov/search,
-,
-Column Name,Description
-total_obligated_amount,Dollar amount of funding committed (obligated) by the federal agency at award time.
-award_base_action_date,Original date the award was granted (used to derive fiscal year).
-period_of_performance_start_date,Official start date of the grant’s performance period.
-period_of_performance_current_end_date,Current planned end date of the grant’s performance period.
-assistance_type_description,"Category of funding type (e.g., Project Grant (B), Cooperative Agreement (C)); used to filter projects."
-fiscal_year,"Fiscal year of the award, derived from award_base_action_date."
-duration_days,Number of days between project start and end dates (derived from performance period dates).
-cancelled,Variable indicating whether the grant was cancelled (based on negative obligated amount).
-cancelled_label,Labeled version of cancelled for plotting (“Cancelled / Net de-obligation”).
-log_funding,Log10-transformed version of total_obligated_amount (for non-normal funding distribution).
-total_grants,Count of grants within each fiscal year or period (generated in summarization).
-cancelled_grants,Number of cancelled grants per fiscal year or time period (derived in summary tables).
-cancellation_rate,Percent of cancelled grants per fiscal year or time period (cancelled_grants / total_grants * 100).
+﻿GRANTS ANALYSIS METADATA,,,,,,,
+This dataset (grants_analysis.csv) contains federal science grant award records from FY 2018–2025 sourced from USAspending.gov.,,,,,,,
+" Each row represents one awarded grant, including financial details, agency information, performance period, recipient location, and cancellation status (derived). ",,,,,,,
+"This dataset was cleaned in cleaning.Rmd and analyzed in analysis.Rmd to explore trends in funding, grant volume, and cancellation rates.",,,,,,,
+Data source URL: https://www.usaspending.gov/search,,,,,,,
+,,,,,,,
+Column Name,Description,Data Type,,,,,
+total_obligated_amount,Dollar amount of funding committed (obligated) by the federal agency at award time.,numeric,,,,,
+award_base_action_date,Original date the award was granted (used to derive fiscal year).,date (character → Date),,,,,
+period_of_performance_start_date,Official start date of the grant’s performance period.,date (character → Date),,,,,
+period_of_performance_current_end_date,Current planned end date of the grant’s performance period.,date (character → Date),,,,,
+assistance_type_description,"Category of funding type (ex., Project Grant, Cooperative Agreement); used to filter projects.",character / factor,,,,,
+fiscal_year,"Fiscal year of the award, derived from award_base_action_date.",integer,,,,,
+duration_days,Number of days between project start and end dates (derived).,integer,,,,,
+cancelled,Indicator for whether the grant was cancelled (based on negative obligated amount).,logical (TRUE/FALSE),,,,,
+cancelled_label,Labeled version of cancellation status for plotting (“Cancelled / Net de-obligation”).,factor (2 levels),,,,,
+log_funding,Log10-transformed value of total_obligated_amount.,numeric,,,,,
+total_grants,Count of grants within each fiscal year or grouping (derived).,integer,,,,,
+cancelled_grants,Number of cancelled grants per fiscal year or grouping (derived).,integer,,,,,
+cancellation_rate,Percent of cancelled grants (cancelled_grants / total_grants * 100).,numeric,,,,,
+,,,,,,,
+,,,,,,,
+,,,,,,,
+,,,,,,,
+,,,,,,,
+,,,,,,,
+,,,,,,,
+,,,,,,,
+,,,,,,,
+,,,,,,,
+,,,,,,,

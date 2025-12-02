@@ -1,18 +1,19 @@
-GRANT CLEANING METADATA,
-"The datasets PrimeAwardSummaries_2018.csv through PrimeAwardSummaries_2025.csv contain annual federal grant award records downloaded from the USAspending.gov database. Each file represents a single fiscal year from 2018 to 2025 and includes detailed information on prime award grants issued by major U.S. science funding agencies: National Institutes of Health (NIH/HHS), National Science Foundation (NSF), Department of Energy (DOE), National Aeronautics and Space Administration (NASA), U.S. Department of Agriculture (USDA), Environmental Protection Agency (EPA), and Department of Defense (DoD). These datasets include key award-level variables such as obligated funding amount, agency, assistance type, award dates, and recipient information. They were used to examine trends over time in grant funding, volume, and cancellation rates across fiscal years.",
-,
-Data source URL: https://www.usaspending.gov/search,
-,
-Column Name,Description
-total_obligated_amount,"Dollar amount committed (obligated) by the funding agency at award time; used for cancellations, filtering, transformations."
-award_base_action_date,Original date of the award; used to derive fiscal_year.
-period_of_performance_start_date,Start date of the performance period; used to calculate duration.
-period_of_performance_current_end_date,End date of performance period; used in duration calculation.
-assistance_type_description,"Type of funding mechanism (Project Grant (B), Cooperative Agreement (C)); used to filter project-specific grants."
-record_type_description,Used for filtering to include only valid award records (excluding non-awards like corrections or deletions).
-award_type_class,Used to retain only assistance grants (A/B/C) versus other funding categories.
-recipient_state_name,Used to retain only U.S. state grants; helped remove foreign/territory awards.
-fiscal_year,Derived from award date; used to group/assign time categories.
-cancelled,Derived flag for cancelled grants (negative funding); used in cancellation calculations.
-duration_days,Length of the grant in days; derived using start and end dates.
-log_funding,Log10 transformation of funding for non-normal distribution; used for visualizations and Kruskal-Wallis.
+﻿GRANT CLEANING METADATA,,
+"The datasets PrimeAwardSummaries_2018.csv through PrimeAwardSummaries_2025.csv contain annual federal grant award records downloaded from the USAspending.gov database. Each file represents a single fiscal year from 2018 to 2025 and includes detailed information on prime award grants issued by major U.S. science funding agencies: National Institutes of Health (NIH/HHS), National Science Foundation (NSF), Department of Energy (DOE), National Aeronautics and Space Administration (NASA), U.S. Department of Agriculture (USDA), Environmental Protection Agency (EPA), and Department of Defense (DoD).",,
+"These datasets include key award-level variables such as obligated funding amount, agency, assistance type, award dates, and recipient information. They were used to examine trends over time in grant funding, volume, and cancellation rates across fiscal years.",,
+,,
+Data source URL: https://www.usaspending.gov/search,,
+,,
+Column Name,Description,Data Type
+total_obligated_amount,"Dollar amount committed (obligated) by the funding agency at award time; used for cancellations, filtering, transformations.",numeric
+award_base_action_date,Original date of the award; used to derive fiscal_year.,date (character → Date)
+period_of_performance_start_date,Start date of the performance period; used to calculate duration.,date (character → Date)
+period_of_performance_current_end_date,End date of performance period; used in duration calculation.,date (character → Date)
+assistance_type_description,"Type of funding mechanism (Project Grant (B), Cooperative Agreement (C)); used to filter project-specific grants.",character / factor
+record_type_description,Used for filtering to include only valid award records (excluding corrections/deletions).,character / factor
+award_type_class,Used to retain only assistance grants (A/B/C) versus other categories.,character / factor
+recipient_state_name,Used to retain only U.S. state recipients; filters out foreign/territory awards.,character / factor
+fiscal_year,Derived from award date; used for temporal grouping.,integer
+cancelled,Derived boolean flag for cancellation (based on negative obligated amount).,logical (TRUE/FALSE)
+duration_days,Length of the grant in days; derived from start and end dates.,integer
+log_funding,Log10-transformed obligated amount; used for normalizing skew.,numeric
