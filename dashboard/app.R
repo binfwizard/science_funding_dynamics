@@ -336,6 +336,60 @@ input[type=radio]:checked::after {
 input[type=radio]:hover {
   border-color: #8c1259;
 }
+      /* ===== Flowchart styling ===== */
+      .flowchart-container {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        margin: 20px 0 10px 0;
+      }
+
+      .flow-step {
+        background-color: #fff8fb;
+        border: 1px solid #f2b5d4;
+        border-radius: 12px;
+        padding: 10px 14px;
+        max-width: 220px;
+        text-align: center;
+        font-size: 0.9em;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+      }
+
+      .flow-step-title {
+        font-weight: 600;
+        color: #b81f74;
+        margin-bottom: 4px;
+      }
+
+      .flow-step-text {
+        margin: 0;
+      }
+
+      .flow-arrow {
+        font-size: 1.6em;
+        color: #b81f74;
+      }
+
+      /* Stack vertically on small screens */
+      @media (max-width: 900px) {
+        .flowchart-container {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+        .flow-arrow {
+          transform: rotate(90deg);
+        }
+      }
+      
+      .figure-caption {
+  margin-top: 10px;        
+  font-size: 0.85em;
+  color: #555555;
+  text-align: center;
+      }
+
     "))
   ),
   div(
@@ -513,6 +567,70 @@ changes in cancellation rates over time.")
           
           hr(),
           
+          # ---- Flowchart (Analysis Workflow Diagram) ----
+          br(),
+          h4("Workflow diagram"),
+          
+          div(
+            class = "flowchart-container",
+            
+            div(
+              class = "flow-step",
+              tags$div(class = "flow-step-title", "1. Download"),
+              tags$p(
+                class = "flow-step-text",
+                "Prime award CSVs (FY 2018-2025) from USAspending.gov"
+              )
+            ),
+            
+            span(class = "flow-arrow", HTML("&rarr;")),
+            
+            div(
+              class = "flow-step",
+              tags$div(class = "flow-step-title", "2. Clean & merge"),
+              tags$p(
+                class = "flow-step-text",
+                "Clean column names, filter major science agencies, merge yearly files"
+              )
+            ),
+            
+            span(class = "flow-arrow", HTML("&rarr;")),
+            
+            div(
+              class = "flow-step",
+              tags$div(class = "flow-step-title", "3. Derive variables"),
+              tags$p(
+                class = "flow-step-text",
+                "Create fiscal year, cancellation status, log funding, duration days"
+              )
+            ),
+            
+            span(class = "flow-arrow", HTML("&rarr;")),
+            
+            div(
+              class = "flow-step",
+              tags$div(class = "flow-step-title", "4. Build dashboard"),
+              tags$p(
+                class = "flow-step-text",
+                "Construct KPIs and interactive tabs for trends, agencies, and details"
+              )
+            ),
+            
+            span(class = "flow-arrow", HTML("&rarr;")),
+            
+            div(
+              class = "flow-step",
+              tags$div(class = "flow-step-title", "5. Statistical tests"),
+              tags$p(
+                class = "flow-step-text",
+                "Run chi-square, Cramer’s V, and trend tests using full dataset"
+              )
+            )
+          ),
+          
+          br(),
+          hr(),
+          
           # Results for H3 + stats
           h3("Results Snapshot (Hypothesis 3: Cancellation Rates)"),
           tags$ul(
@@ -550,7 +668,7 @@ changes in cancellation rates over time.")
           tags$ul(
             tags$li("Stratify trends by agency to see whether specific agencies drive changes in cancellation rates."),
             tags$li("Incorporate award duration and recipient characteristics to explain high-risk cancellation profiles."),
-            tags$li("Extend the analysis beyond 2025 as new fiscal year data become available."),
+            tags$li("Extend the analysis beyond 2025 as new fiscal year data become available (see fig01_funding_boxplot in the 'figures' GitHub folder for 2026 snapshot)."),
             tags$li("Incorporate unweighted logistic regression modeling to predict cancellation probability.")
           ),
           
@@ -576,16 +694,21 @@ changes in cancellation rates over time.")
                         "Cancelled dollars"        = "dollars"),
             inline = TRUE
           ),
-          plotlyOutput("time_plot", height = "450px")
+          div(
+            plotlyOutput("time_plot", height = "450px"),
+            uiOutput("time_caption")
+          )
         ),
         
         # ---- Agency tab ----
         tabPanel(
           "Agency Breakdown",
           br(),
-          plotlyOutput("agency_plot", height = "450px")
+          div(
+            plotlyOutput("agency_plot", height = "450px"),
+            uiOutput("agency_caption")
+          )
         ),
-        
         # ---- Details tab ----
         tabPanel(
           "Explore Details",
@@ -883,6 +1006,20 @@ server <- function(input, output, session) {
                       margin = list(l = 60, r = 40, b = 60, t = 80)))
  }})
   
+  output$time_caption <- renderUI({
+    if (input$time_metric == "count") {
+      tags$p(
+        class = "figure-caption",
+        "Figure 1: Number of cancelled science grants by fiscal year for selected agencies and filters."
+      )
+    } else {
+      tags$p(
+        class = "figure-caption",
+        "Figure 2: Total cancelled dollars (absolute value, USD) by fiscal year for selected agencies and filters."
+      )
+    }
+  })
+  
   # ========= AGENCY TAB =========
   
   agency_summary <- reactive({
@@ -967,6 +1104,13 @@ server <- function(input, output, session) {
       layout(
         hoverlabel = list(font = list(size = 13)),
         margin = list(l = 70, r = 60, b = 60, t = 80))
+  })
+  
+  output$agency_caption <- renderUI({
+    tags$p(
+      class = "figure-caption",
+      "Figure 3: Total obligated funding (in billions of USD) by agency, with bar color indicating cancellation rate per agency under the current filters."
+    )
   })
   
   # ========= DETAILS TAB =========
